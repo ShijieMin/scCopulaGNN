@@ -11,10 +11,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from data import (to_data, read_sota, read_baron3, read_hk,
-  read_tb,read_pbmc)
-from models import (MLP, GCN, CopulaModel,
-                    RegCopulaGCN, RegCopulaGAT)
+from data import (to_data, read_sota, read_baron3, read_hk,read_tb)
+from models import (MLP, GCN, CopulaModel,RegCopulaGCN)
 from utils import Logger
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score,auc,precision_recall_curve
@@ -25,7 +23,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import label_binarize
 import warnings
-from focalloss import FocalLoss, MultiClassFocalLossWithAlpha
 
 warnings.filterwarnings('error')
 
@@ -41,18 +38,6 @@ parser.add_argument("--path", default="./data")
 parser.add_argument("--dataset", default="human_kidney")
 parser.add_argument("--num_class", type=int, default=1)
 parser.add_argument("--cross_valid", type=int, default=1, help="cross validation kfolder")
-# Synthetic data configuration
-parser.add_argument(
-    "--lsn_mode", default="daxw",
-    help=("Choices: `daxwi`, `xw', or `daxw`. \n"
-          "  `daxwi`: only mean is graph-dependent; \n"
-          "  `xw`: only cov is graph-dependent; \n"
-          "  `daxw`: both mean and cov are graph-dependent."))
-parser.add_argument("--num_features", type=int, default=10)
-parser.add_argument("--num_nodes", type=int, default=300)
-parser.add_argument("--num_edges", type=int, default=5000)
-parser.add_argument("--gamma", type=float, default=0.1)
-parser.add_argument("--tau", type=float, default=1.0)
 
 # Model configuration
 parser.add_argument("--model_type", default="regcgcn")
@@ -91,152 +76,29 @@ if __name__ == "__main__":
 
         # Load data
         data_seed = int(np.ceil(args.seed / float(args.num_trials)))
-        if args.dataset == "lsn":
-            x, y, adj, datafile = generate_lsn(n=args.num_nodes,
-                                            d=args.num_features,
-                                            m=args.num_edges,
-                                            gamma=args.gamma,
-                                            tau=args.tau,
-                                            seed=data_seed,
-                                            lsn_mode=args.lsn_mode,
-                                            root=args.path,
-                                            save_file=False)
-            data = to_data(x, y, adj=adj)
-            data.is_count_data = False
-            data.to(args.device)
-            
-        ###This section is for import sota and baron3 dataset, I also extract the class distribution
-        elif args.dataset.startswith("sota"):
+        if args.dataset.startswith("sota"):
             data = read_sota("data")
-            #data = load_data_with_negative_sampling("data")
             data.is_count_data = True
             data.to(args.device)
-            # Extract training labels using the train_mask
-            train_labels = data.y[data.train_mask].cpu().detach().numpy()
-            # Check class distribution in the training set
-            labels_t, counts_t = np.unique(train_labels, return_counts=True)
-            for l, c in zip(labels_t, counts_t):
-                print(f"Class {l}: {c} samples, train")
-            #test
-            test_labels = data.y[data.test_mask].cpu().detach().numpy()
-            labels_te, counts_te = np.unique(test_labels, return_counts=True)
-            for l, c in zip(labels_te, counts_te):
-                print(f"Class {l}: {c} samples, test")
-            #valid
-            valid_labels = data.y[data.valid_mask].cpu().detach().numpy()
-            labels_v, counts_v = np.unique(valid_labels, return_counts=True)
-            for l, c in zip(labels_v, counts_v):
-                print(f"Class {l}: {c} samples, valid")
         elif args.dataset.startswith("baron3"):
             data = read_baron3("data",seed=data_seed)
             data.is_count_data = True
             data.to(args.device)
-            # Extract training labels using the train_mask
-            train_labels = data.y[data.train_mask].cpu().detach().numpy()
-            # Check class distribution in the training set
-            labels, counts = np.unique(train_labels, return_counts=True)
-            for l, c in zip(labels, counts):
-                print(f"Class {l}: {c} samples")
-            #test
-            test_labels = data.y[data.test_mask].cpu().detach().numpy()
-            labels_te, counts_te = np.unique(test_labels, return_counts=True)
-            for l, c in zip(labels_te, counts_te):
-                print(f"Class {l}: {c} samples, test")
-            #valid
-            valid_labels = data.y[data.valid_mask].cpu().detach().numpy()
-            labels_v, counts_v = np.unique(valid_labels, return_counts=True)
-            for l, c in zip(labels_v, counts_v):
-                print(f"Class {l}: {c} samples, valid")
         elif args.dataset.startswith("human_kidney"):
             data = read_hk("data",seed=data_seed)
             data.is_count_data = True
             data.to(args.device)
-            # Extract training labels using the train_mask
-            train_labels = data.y[data.train_mask].cpu().detach().numpy()
-            # Check class distribution in the training set
-            labels, counts = np.unique(train_labels, return_counts=True)
-            for l, c in zip(labels, counts):
-                print(f"Class {l}: {c} samples")
-            #test
-            test_labels = data.y[data.test_mask].cpu().detach().numpy()
-            labels_te, counts_te = np.unique(test_labels, return_counts=True)
-            for l, c in zip(labels_te, counts_te):
-                print(f"Class {l}: {c} samples, test")
-            #valid
-            valid_labels = data.y[data.valid_mask].cpu().detach().numpy()
-            labels_v, counts_v = np.unique(valid_labels, return_counts=True)
-            for l, c in zip(labels_v, counts_v):
-                print(f"Class {l}: {c} samples, valid")
         elif args.dataset.startswith("tb"):
             data = read_tb("data",seed=data_seed)
             data.is_count_data = True
             data.to(args.device)
-            # Extract training labels using the train_mask
-            train_labels = data.y[data.train_mask].cpu().detach().numpy()
-            # Check class distribution in the training set
-            labels, counts = np.unique(train_labels, return_counts=True)
-            for l, c in zip(labels, counts):
-                print(f"Class {l}: {c} samples")
-            #test
-            test_labels = data.y[data.test_mask].cpu().detach().numpy()
-            labels_te, counts_te = np.unique(test_labels, return_counts=True)
-            for l, c in zip(labels_te, counts_te):
-                print(f"Class {l}: {c} samples, test")
-            #valid
-            valid_labels = data.y[data.valid_mask].cpu().detach().numpy()
-            labels_v, counts_v = np.unique(valid_labels, return_counts=True)
-            for l, c in zip(labels_v, counts_v):
-                print(f"Class {l}: {c} samples, valid")
-        elif args.dataset.startswith("pbmc"):
-            data = read_pbmc(path='data/pbmc', num_class=args.num_class, seed=data_seed, phase='train')
-            data.is_count_data = True
-            data.to(args.device)
-            # Extract training labels using the train_mask
-            train_labels = data.y[data.train_mask].cpu().detach().numpy()
-            # Check class distribution in the training set
-            labels, counts = np.unique(train_labels, return_counts=True)
-            for l, c in zip(labels, counts):
-                print(f"Class {l}: {c} samples")
-            #test
-            test_labels = data.y[data.test_mask].cpu().detach().numpy()
-            labels_te, counts_te = np.unique(test_labels, return_counts=True)
-            for l, c in zip(labels_te, counts_te):
-                print(f"Class {l}: {c} samples, test")
-            #valid
-            valid_labels = data.y[data.valid_mask].cpu().detach().numpy()
-            labels_v, counts_v = np.unique(valid_labels, return_counts=True)
-            for l, c in zip(labels_v, counts_v):
-                print(f"Class {l}: {c} samples, valid")
-            
-            ## test
-            data_test = read_pbmc(path='data/pbmc', num_class=args.num_class, seed=data_seed, phase='test')
-            data_test.is_count_data = True
-            data_test.to(args.device)
-            # Extract training labels using the train_mask
-            train_labels = data_test.y[data_test.train_mask].cpu().detach().numpy()
-            # Check class distribution in the training set
-            labels, counts = np.unique(train_labels, return_counts=True)
-            for l, c in zip(labels, counts):
-                print(f"Class {l}: {c} samples")
-            #test
-            test_labels = data_test.y[data_test.test_mask].cpu().detach().numpy()
-            labels_te, counts_te = np.unique(test_labels, return_counts=True)
-            for l, c in zip(labels_te, counts_te):
-                print(f"Class {l}: {c} samples, test")
-            #valid
-            valid_labels = data_test.y[data_test.valid_mask].cpu().detach().numpy()
-            labels_v, counts_v = np.unique(valid_labels, return_counts=True)
-            for l, c in zip(labels_v, counts_v):
-                print(f"Class {l}: {c} samples, valid")
         else:
             raise NotImplementedError("Dataset {} is not supported.".format(
                 args.dataset))
         print(data)
 
-        ###change the evaluation matric
         def evaluate_classification_metrics(preds, labels, evals):
             metrics = {}
-
             # change type
             if isinstance(preds, torch.Tensor):
                 preds = preds.cpu().numpy()
@@ -285,47 +147,8 @@ if __name__ == "__main__":
                     print(f"Error during ROC computation: {e}")
             metrics["ROC_AUC"]=roc_auc
 
-
-            #roc curve
-            plt.figure(figsize=(12, 8))
-            plt.plot(fpr, tpr, lw=2,
-                            label='ROC curve (area = %0.2f)' % roc_auc)
-                        #label=f'ROC curve of class {i} (area = {roc_auc[i]:.2f})')
-
-            plt.plot([0, 1], [0, 1], 'k--', lw=2)
-            plt.xlim([0.0, 1.0])
-            plt.ylim([0.0, 1.05])
-            plt.xlabel('False Positive Rate')
-            plt.ylabel('True Positive Rate')
-            ###title and file name need to be changed based on label
-            plt.title(f'Receiver Operating Characteristic for class {args.num_class}')
-            plt.legend(loc="lower right")
-            plt.savefig(os.path.join(save_root,f"ROC for {args.num_class}.png"))
-
-            plt.close()
-
-            plt.figure(figsize=(12, 8))
-            precision, recall, _ = precision_recall_curve(labels, evals)
-            f1, lr_auc = f1_score(labels, preds), auc(recall, precision)
-            # plot the precision-recall curves
-            no_skill = len(labels[labels==1]) / len(labels)
-            plt.plot([0, 1], [no_skill, no_skill], linestyle='--', label='1')
-            plt.plot(recall, precision, marker='.', label='pr curve')
-            plt.xlabel('Recall')
-            plt.ylabel('Precision')
-            ###title and file name need to be changed based on label
-            plt.title(f'Precision-Recall Curves for class {args.num_class}')
-            plt.legend(loc="lower right")
-            plt.savefig(os.path.join(save_root,f"PR for {args.num_class}.png"))
-            plt.close()
-            return metrics
-
         minimize_metric = -1
-
-        # if not data.is_count_data:
         marginal_type = "Poisson"
-        # else:
-        #     marginal_type = "Binomial"
 
         # Log file
         time_stamp = time.time()
@@ -347,15 +170,13 @@ if __name__ == "__main__":
             "activation": "relu"
         }
 
-        if args.model_type in ["corcgcn", "regcgcn", "corcsage", "regcsage","copula", 'regcgat', 'corcgat']:
+        if args.model_type in ["regcgcn"]:
             model_args["marginal_type"] = marginal_type
 
         if args.model_type == "mlp":
             model = MLP(**model_args)
         elif args.model_type == "gcn":
             model = GCN(**model_args)
-        elif args.model_type == "regcgcn":
-            model = RegCopulaGCN(**model_args)
         elif args.model_type == "copula":
             model = CopulaModel(**model_args)
         else:
@@ -378,23 +199,13 @@ if __name__ == "__main__":
         if hasattr(model, "nll"):
             def train_loss_fn(model, data):
                 return model.nll(data)
-
         else:
-        ###
-        #In here I delete other loss function, I also changed the original to
-        #Binary Cross Entropy and it seems works as well. 
-        #If we are dealing with binary data, maybe we could go with BCE?
-            # loss_fn = nn.CrossEntropyLoss()
-            loss_fn = MultiClassFocalLossWithAlpha([0.01, 4], gamma=6)
+            loss_fn = nn.CrossEntropyLoss()
             def criterion(logits, labels):
-                #return torch.mean(torch.exp(logits) - labels * logits)
-                return loss_fn(logits, labels.long())
-            # criterion = nn.BCELoss()
-        
+                return loss_fn(logits, labels.long())        
             def train_loss_fn(model, data):
                 return criterion(
                     model(data)[data.train_mask], data.y[data.train_mask])
-                #criterion = nn.BCELoss()
 
         # Training and evaluation
         def train():
@@ -404,23 +215,12 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
 
-        def export_for_r(evals, y, file_name):
-            # Create a DataFrame
-            df = pd.DataFrame({
-                'Evals': evals,
-                'Y': y    })
-            # Export to CSV
-            csv_file_name = os.path.join(save_root, f"data_{args.num_class}.csv")
-            df.to_csv(file_name, index=False)
-
         def test():
             model.eval()
             performance_results = {}
             with torch.no_grad():
                 if hasattr(model, "predict"):
                       preds,evals = model.predict(data,num_samples=1000) 
-                      export_for_r(evals.cpu(), data.y.cpu(), f'output_{args.model_type}.csv')
-                      ###The num_samples could be changed maybe?
                     # Evaluate performance
                       train_metric = evaluate_classification_metrics(preds[data.train_mask], data.y[data.train_mask], evals[data.train_mask])
                       valid_metric = evaluate_classification_metrics(preds[data.valid_mask], data.y[data.valid_mask],evals[data.valid_mask])
@@ -431,7 +231,6 @@ if __name__ == "__main__":
                         'valid': valid_metric, 
                         'test': test_metric
                        }
-
                 else:
                     preds = model(data)
                     if marginal_type == "Poisson":
@@ -448,7 +247,6 @@ if __name__ == "__main__":
         for epoch in range(args.num_epochs):
             train()
             loss = train_loss_fn(model,data)
-            #loss = nn.BCELoss()
             if (epoch + 1) % args.log_interval == 0:
                 performance_results = test()
         # Averaging metrics across labels
@@ -496,46 +294,6 @@ if __name__ == "__main__":
         lgr.p("-----\nBest epoch {}: valid {:.4f}, test {:.4f}".format(
             stats_to_save["epoch"], stats_to_save["valid_metric"],stats_to_save["valid_auc"],
             stats_to_save["test_metric"],stats_to_save["test_auc"]))
-        df = pd.DataFrame(stats_to_save["traj"])
-        # Save to Excel file
-        excel_filename = os.path.join(save_root, f"result_{args.num_class}.xlsx")
-        df.to_excel(excel_filename, index=False)
-        print(f"Results saved to {excel_filename}")
-
-        # Assuming stats_to_save["traj"] stores the trajectory of metrics across epochs
-        epochs = [entry["epoch"] for entry in stats_to_save["traj"]]
-        valid_metrics = [entry["valid_metric"] for entry in stats_to_save["traj"]]
-        test_metrics = [entry["test_metric"] for entry in stats_to_save["traj"]]
-
-        # Extracting AUC scores
-        valid_auc_scores = [entry["valid_auc"] for entry in stats_to_save["traj"]]
-        test_auc_scores = [entry["test_auc"] for entry in stats_to_save["traj"]]
-
-        loss = [entry["loss"] for entry in stats_to_save["traj"]]
-
-        # Plotting
-        plt.figure(figsize=(10, 5))
-        plt.plot(epochs, valid_auc_scores, label='Validation AUC')
-        plt.plot(epochs, test_auc_scores, label='Test AUC')
-        plt.xlabel('Epochs')
-        plt.ylabel('AUC Score')
-        plt.title('AUC Score vs. Epochs')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(os.path.join(save_root, f'AUC vs Epochs,{args.num_class}.png'))
-        plt.close()
-
-        loss_value = [x.detach().cpu().numpy() for x in loss] 
-        plt.figure(figsize=(10, 6))
-        plt.plot(epochs, loss_value, label='Loss')
-        plt.title('Epoch vs Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.savefig(os.path.join(save_root, f"Loss-{args.num_class}.png"))
-
-
-
-
 
         # Write outputs
         if args.verbose == 0:
