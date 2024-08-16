@@ -6,5 +6,7 @@ To address this issue, we proposed the Copula-infused Graph Neural Network(scCop
 
 Key words: single-cell RNA sequencing, cell type classification, graph neural networks, copula theory
 
+![Blank diagram (8)](https://github.com/user-attachments/assets/ebc33175-3776-49a7-91f1-9eb4942839db)
+
 We acknowledge Ma et al. for their source code repository https://github.com/jiaqima/CopulaGNN we used in the study.
 
